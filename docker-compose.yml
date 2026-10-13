@@ -1,0 +1,44 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5050:5000"
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-spotoq}
+      POSTGRES_USER: ${POSTGRES_USER:-spotoq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spotoq}
+      # Ollama runs natively on the host (not in Docker) so it can use the Mac's
+      # GPU (Metal) -- Docker Desktop can't pass that through to a container.
+      # host.docker.internal resolves to the host from inside the container.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-minicpm-v}
+    volumes:
+      - ./incoming:/data/incoming
+      - ./data/cleaned:/data/cleaned
+      - ./data/debug:/data/debug
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "python -m app.cli init-db && python -m app.review_app"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-spotoq}
+      POSTGRES_USER: ${POSTGRES_USER:-spotoq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spotoq}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spotoq}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

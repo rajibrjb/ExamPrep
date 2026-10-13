@@ -1,0 +1,44 @@
+# Default config. Values here are overridden by matching env vars (see app/config.py).
+database:
+  host: db
+  port: 5432
+  name: spotoq
+  user: spotoq
+  password: spotoq
+
+ollama:
+  base_url: http://host.docker.internal:11434
+  model: minicpm-v
+  timeout_seconds: 120
+
+paths:
+  incoming_dir: /data/incoming
+  cleaned_dir: /data/cleaned
+  debug_dir: /data/debug
+
+color_thresholds:
+  # HSV ranges on OpenCV's scale (H 0-179, S/V 0-255), calibrated by sampling actual
+  # option-text pixels from the SPOTO VCE player screenshots:
+  #   red text   ~ RGB(233-235, 54, 28-103)  -> H 0-8 or 170-179, S 150-230, V 150-235
+  #   green text ~ RGB(50-74, 126, 30-103)   -> H 45-85,          S 60-200,  V 80-210
+  #   watermark  always has V >= 235 (pastel/near-white), regardless of hue.
+  green:
+    h_min: 45
+    h_max: 85
+    s_min: 60
+    v_min: 70
+    v_max: 215
+  red:
+    h_max_low: 8      # band 1: 0-8
+    h_min_high: 170   # band 2: 170-179
+    s_min: 120
+    v_min: 140
+  # Text/non-watermark pixel: either dark (real black text) or matches a red/green band above.
+  text_max_value: 160
+
+dedupe:
+  # Same (exam_label, item_number) re-extracted from a new screenshot: question_text
+  # similarity (difflib ratio, 0-1) at or above this AND a matching correct-answer
+  # set is treated as the same question re-captured (skip as duplicate). Below it,
+  # or a differing answer, is left as a conflict for human review.
+  similarity_threshold: 0.85

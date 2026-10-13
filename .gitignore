@@ -1,0 +1,18 @@
+# Exam screenshots and generated intermediate images -- personal content, not code
+incoming/
+data/
+
+# Secrets / local env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# OS cruft
+.DS_Store
+
+# Editor
+.vscode/
+.idea/

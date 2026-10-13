@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}SpotoQ — Conflicts{% endblock %}
+{% block content %}
+
+<h4 class="mb-3">Open conflicts</h4>
+<p class="text-muted">
+  These screenshots share an item number with a question already stored, but their
+  extracted content disagrees enough that it wasn't auto-merged. Pick which version to keep.
+</p>
+
+{% for c in conflicts %}
+<div class="card conflict-card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span><strong>{{ c.exam_label }} — Q{{ c.item_number }}</strong>
+      <span class="text-muted small">similarity {{ "%.0f"|format(c.similarity * 100) }}%</span>
+    </span>
+    <span class="text-muted small">conflict #{{ c.id }}</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="version-col version-existing">
+          <div class="fw-semibold mb-2">Currently stored</div>
+          <p class="small">{{ c.existing_question_text }}</p>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="version-col version-new">
+          <div class="fw-semibold mb-2">New extraction (this screenshot)</div>
+          <p class="small">{{ c.question_text }}</p>
+          <ul class="list-unstyled small mb-0">
+            {% for opt in c.options_json %}
+            <li>
+              <strong>{{ opt.option_letter }}</strong>
+              {% if opt.is_correct %}<span class="badge text-bg-success">correct</span>{% endif %}
+              {{ opt.option_text }}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card-footer bg-white d-flex gap-2">
+    <form method="post" action="/conflicts/{{ c.id }}/resolve" class="d-inline">
+      <input type="hidden" name="resolution" value="kept_existing">
+      <button class="btn btn-outline-secondary btn-sm" type="submit">Keep existing</button>
+    </form>
+    <form method="post" action="/conflicts/{{ c.id }}/resolve" class="d-inline">
+      <input type="hidden" name="resolution" value="adopted_new">
+      <button class="btn btn-outline-warning btn-sm" type="submit">Replace with new extraction</button>
+    </form>
+    <a class="btn btn-outline-primary btn-sm" href="/question/{{ c.question_id }}">Open stored question</a>
+  </div>
+</div>
+{% else %}
+<p class="text-muted">No open conflicts.</p>
+{% endfor %}
+
+{% endblock %}

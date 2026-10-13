@@ -1,0 +1,82 @@
+body {
+  background-color: #f6f7f9;
+}
+
+.navbar-brand {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.stat-card {
+  border: 1px solid #e9ecef;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.stat-card .stat-value {
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.stat-card .stat-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6c757d;
+}
+
+#run-log {
+  background: #0d1117;
+  color: #58d68d;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.question-text-cell {
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.option-row.is-correct {
+  background-color: rgba(25, 135, 84, 0.08);
+  border-left: 3px solid #198754;
+}
+
+.option-row {
+  border-left: 3px solid transparent;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+}
+
+.color-swatch {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+}
+
+.color-swatch.green { background: #198754; }
+.color-swatch.red { background: #dc3545; }
+.color-swatch.other { background: #adb5bd; }
+
+.conflict-card .version-col {
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.conflict-card .version-existing {
+  background: #f8f9fa;
+}
+
+.conflict-card .version-new {
+  background: #fff8e6;
+}

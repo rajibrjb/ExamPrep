@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}SpotoQ — Review{% endblock %}
+{% block content %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-2">
+    <div class="stat-card p-3">
+      <div class="stat-value">{{ counts.images_pending }}</div>
+      <div class="stat-label">Pending images</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-card p-3">
+      <div class="stat-value">{{ counts.images_processed }}</div>
+      <div class="stat-label">Processed</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-card p-3">
+      <div class="stat-value">{{ counts.images_duplicate }}</div>
+      <div class="stat-label">Duplicates</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-card p-3">
+      <div class="stat-value text-danger">{{ counts.images_error }}</div>
+      <div class="stat-label">Errors</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-card p-3">
+      <div class="stat-value text-warning">{{ counts.questions_needs_review }}</div>
+      <div class="stat-label">Needs review</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-card p-3">
+      <div class="stat-value text-success">{{ counts.questions_ok }}</div>
+      <div class="stat-label">Confirmed</div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <button class="btn btn-primary" id="btn-run" onclick="runPipeline('process')">
+        <span class="spinner-border spinner-border-sm d-none" id="run-spinner"></span>
+        Run (process new images)
+      </button>
+      <button class="btn btn-outline-secondary" onclick="runPipeline('retry_failed')">Retry failed</button>
+      <span class="text-muted small" id="run-indicator"></span>
+    </div>
+    <pre id="run-log" class="d-none mb-0"></pre>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white">
+    <strong>{% if filter == 'needs_review' %}Questions needing review{% else %}All questions{% endif %}</strong>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Exam</th><th>Q#</th><th>Question</th><th>Confidence</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for q in questions %}
+        <tr>
+          <td>{{ q.exam_label }}</td>
+          <td>{{ q.item_number }}</td>
+          <td class="question-text-cell">{{ q.question_text }}</td>
+          <td>
+            {% if q.confidence == 'high' %}
+              <span class="badge text-bg-success">high</span>
+            {% else %}
+              <span class="badge text-bg-warning">low</span>
+            {% endif %}
+          </td>
+          <td><a class="btn btn-sm btn-outline-primary" href="/question/{{ q.id }}">Open</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">Nothing here yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function setRunning(running) {
+  document.getElementById('btn-run').disabled = running;
+  document.getElementById('run-spinner').classList.toggle('d-none', !running);
+  document.getElementById('run-indicator').textContent = running ? 'running…' : '';
+}
+
+function runPipeline(mode) {
+  fetch('/run', {method: 'POST', body: new URLSearchParams({mode: mode})})
+    .then(r => r.json())
+    .then(data => {
+      if (!data.started) { alert(data.reason); return; }
+      document.getElementById('run-log').classList.remove('d-none');
+      setRunning(true);
+      poll();
+    });
+}
+
+let wasRunning = false;
+
+function poll() {
+  fetch('/run/status').then(r => r.json()).then(data => {
+    const logEl = document.getElementById('run-log');
+    if (data.log.length) {
+      logEl.classList.remove('d-none');
+      logEl.textContent = data.log.join('\n');
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    setRunning(data.running);
+    if (data.running) {
+      wasRunning = true;
+      setTimeout(poll, 1500);
+    } else if (wasRunning) {
+      setTimeout(() => location.reload(), 1200);
+    }
+  });
+}
+
+// Resume the log/spinner on page load if a run is already in progress
+// (e.g. the user navigated away and came back) -- but don't auto-reload
+// on an ordinary page load where nothing is running.
+poll();
+</script>
+{% endblock %}

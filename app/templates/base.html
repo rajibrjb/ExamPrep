@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}SpotoQ{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+  <div class="container-fluid px-4">
+    <a class="navbar-brand" href="/">SpotoQ</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="nav">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+          <a class="nav-link {% if active_tab == 'needs_review' %}active{% endif %}" href="/?filter=needs_review">
+            Needs Review
+            {% if counts and counts.questions_needs_review %}
+              <span class="badge rounded-pill text-bg-warning">{{ counts.questions_needs_review }}</span>
+            {% endif %}
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if active_tab == 'all' %}active{% endif %}" href="/?filter=all">All Questions</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if active_tab == 'conflicts' %}active{% endif %}" href="/conflicts">
+            Conflicts
+            {% if counts and counts.open_conflicts %}
+              <span class="badge rounded-pill text-bg-danger">{{ counts.open_conflicts }}</span>
+            {% endif %}
+          </a>
+        </li>
+      </ul>
+      <ul class="navbar-nav">
+        <li class="nav-item">
+          <a class="nav-link {% if active_tab == 'settings' %}active{% endif %}" href="/settings">Settings</a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid px-4 pb-5">
+  {% block content %}{% endblock %}
+</div>
+
+<script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

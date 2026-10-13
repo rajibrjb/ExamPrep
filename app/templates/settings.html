@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}SpotoQ — Settings{% endblock %}
+{% block content %}
+
+<h4 class="mb-3">Settings</h4>
+
+<form method="post" action="/settings">
+  <div class="card mb-4">
+    <div class="card-header bg-white">LLM provider</div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label">Active provider for the "Explain" feature</label>
+        <select name="llm_provider" class="form-select" style="max-width: 320px;">
+          {% for key, label in [('ollama','Ollama (local, default)'), ('openai','OpenAI (ChatGPT)'), ('anthropic','Anthropic (Claude)'), ('gemini','Google Gemini'), ('openrouter','OpenRouter')] %}
+          <option value="{{ key }}" {% if settings.llm_provider == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {% for provider, p in providers.items() %}
+      <div class="border rounded p-3 mb-2">
+        <div class="fw-semibold mb-2">{{ provider }}</div>
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label small">Model</label>
+            <input type="text" class="form-control form-control-sm" name="{{ provider }}_model" value="{{ p.model }}">
+          </div>
+          {% if p.needs_key %}
+          <div class="col-md-6">
+            <label class="form-label small">
+              API key {% if p.has_key %}<span class="badge text-bg-success">set</span>{% else %}<span class="badge text-bg-secondary">not set</span>{% endif %}
+            </label>
+            <input type="password" class="form-control form-control-sm" name="{{ provider }}_api_key"
+                   placeholder="{{ 'leave blank to keep current key' if p.has_key else 'paste API key' }}" autocomplete="off">
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      <p class="text-muted small mb-0">Only the selected provider above is actually used; the others' settings are kept ready in case you switch.</p>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+      <span>Explain prompt template</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetPrompt()">Reset to default</button>
+    </div>
+    <div class="card-body">
+      <p class="text-muted small">
+        Placeholders: <code>$question_text</code>, <code>$options_block</code>, <code>$correct_letters</code>
+      </p>
+      <textarea name="explain_prompt_template" id="prompt-template" class="form-control" rows="12" style="font-family: monospace;">{{ settings.explain_prompt_template }}</textarea>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Save settings</button>
+</form>
+
+<template id="default-prompt-template">{{ default_prompt }}</template>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function resetPrompt() {
+  const defaultText = document.getElementById('default-prompt-template').innerHTML;
+  document.getElementById('prompt-template').value = defaultText;
+}
+</script>
+{% endblock %}
