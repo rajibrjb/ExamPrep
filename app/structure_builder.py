@@ -1,6 +1,7 @@
 import re
 
 from app.color_detect import classify_options
+from app.config import config
 from app.ocr_engine import extract_lines, parse_question
 from app.ollama_client import OllamaError, extract_via_vision
 
@@ -21,7 +22,7 @@ def _normalize_letters(letters):
     return set(letter.upper() for letter in letters if letter)
 
 
-def build_question(cropped_bgr, cleaned_bgr, image_path):
+def build_question(cropped_bgr, cleaned_bgr, image_path, force_llm=False):
     """Deterministically extract question/options/answer via OCR + pixel color
     detection -- these two signals are independently derived from the same image
     and agreed in every sample tested, so they're treated as authoritative.
@@ -32,9 +33,12 @@ def build_question(cropped_bgr, cleaned_bgr, image_path):
     options or paraphrases wording, so its output is never used to decide
     correctness or to replace OCR'd text -- only surfaced as a hint when it
     disagrees, so a human can take a second look.
+
+    force_llm runs the advisory pass even when SKIP_LLM_ADVISORY is set (used by
+    the single-question "Re-analyze" button, where its latency is acceptable).
     """
     lines = extract_lines(cleaned_bgr)
-    parsed = parse_question(lines)
+    parsed = parse_question(lines, cropped_bgr)
     ocr_options = classify_options(cropped_bgr, parsed["options"])
 
     color_correct = _normalize_letters(
@@ -44,16 +48,17 @@ def build_question(cropped_bgr, cleaned_bgr, image_path):
 
     reasons = []
     llm_note = None
-    try:
-        ollama_result = extract_via_vision(image_path)
-        llm_opts = ollama_result.get("options", [])
-        llm_correct = _normalize_letters(ollama_result.get("correct_letters", []))
-        if len(llm_opts) != len(ocr_options):
-            llm_note = f"local vision model saw {len(llm_opts)} options (expected {len(ocr_options)})"
-        elif llm_correct and llm_correct != color_correct:
-            llm_note = f"local vision model suggested {sorted(llm_correct)} instead of {sorted(color_correct)}"
-    except OllamaError as e:
-        llm_note = f"local vision model call failed: {e}"
+    if force_llm or not config.skip_llm_advisory:
+        try:
+            ollama_result = extract_via_vision(image_path)
+            llm_opts = ollama_result.get("options", [])
+            llm_correct = _normalize_letters(ollama_result.get("correct_letters", []))
+            if len(llm_opts) != len(ocr_options):
+                llm_note = f"local vision model saw {len(llm_opts)} options (expected {len(ocr_options)})"
+            elif llm_correct and llm_correct != color_correct:
+                llm_note = f"local vision model suggested {sorted(llm_correct)} instead of {sorted(color_correct)}"
+        except OllamaError as e:
+            llm_note = f"local vision model call failed: {e}"
 
     if not color_correct and not answer_text_correct:
         confidence, needs_review = "low", True
@@ -69,6 +74,13 @@ def build_question(cropped_bgr, cleaned_bgr, image_path):
             f"Answer: line {sorted(answer_text_correct)}"
         )
         final_correct = color_correct or answer_text_correct
+
+    if parsed.get("header_mismatch"):
+        confidence, needs_review = "low", True
+        reasons.append(
+            "item number disagreed between the 'Item N of M' and '(Exam, QN)' header "
+            "readings -- verify the item number against the screenshot"
+        )
 
     if llm_note:
         reasons.append(llm_note)

@@ -2,21 +2,43 @@
 {% block title %}SpotoQ — {{ q.exam_label }} Q{{ q.item_number }}{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <a class="btn btn-sm btn-outline-secondary" href="/">&larr; Back to list</a>
-  <div class="btn-group">
-    {% if prev_id %}
-      <a class="btn btn-sm btn-outline-primary" href="/question/{{ prev_id }}">&larr; Previous</a>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <a class="btn btn-sm btn-outline-secondary" href="/?filter={{ nav_filter }}">&larr; Back to list</a>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <button class="btn btn-sm {{ 'btn-info' if q.read_at else 'btn-outline-info' }}" id="btn-read"
+            data-read="{{ '1' if q.read_at else '0' }}" onclick="toggleRead()"
+            title="Track your study progress -- filter the question list by read/unread">
+      {{ 'Read ✓' if q.read_at else 'Mark as read' }}
+    </button>
+    {% if mode == 'edit' %}
+      <button class="btn btn-sm btn-outline-warning" id="btn-reanalyze" onclick="runReanalyze()"
+              title="Re-run OCR + color detection + the local vision model on this question's screenshot and overwrite the extracted data">
+        <span class="spinner-border spinner-border-sm d-none" id="reanalyze-spinner"></span>
+        Re-analyze (OCR + AI)
+      </button>
+      <a class="btn btn-sm btn-outline-secondary" href="/question/{{ q.id }}?filter={{ nav_filter }}&mode=practice">Done editing</a>
     {% else %}
-      <button class="btn btn-sm btn-outline-secondary" disabled>&larr; Previous</button>
+      <a class="btn btn-sm btn-outline-warning" href="/question/{{ q.id }}?filter={{ nav_filter }}&mode=edit"
+         title="Edit the question text, options, answer key, and exam/item number">Edit</a>
     {% endif %}
-    {% if next_id %}
-      <a class="btn btn-sm btn-outline-primary" href="/question/{{ next_id }}">Next &rarr;</a>
-    {% else %}
-      <button class="btn btn-sm btn-outline-secondary" disabled>Next &rarr;</button>
-    {% endif %}
+    <div class="btn-group">
+      {% if prev_id %}
+        <a class="btn btn-sm btn-outline-primary" href="/question/{{ prev_id }}?filter={{ nav_filter }}&mode={{ mode }}">&larr; Previous</a>
+      {% else %}
+        <button class="btn btn-sm btn-outline-secondary" disabled>&larr; Previous</button>
+      {% endif %}
+      {% if next_id %}
+        <a class="btn btn-sm btn-outline-primary" href="/question/{{ next_id }}?filter={{ nav_filter }}&mode={{ mode }}">Next &rarr;</a>
+      {% else %}
+        <button class="btn btn-sm btn-outline-secondary" disabled>Next &rarr;</button>
+      {% endif %}
+    </div>
   </div>
 </div>
+
+{% if saved %}
+<div class="alert alert-success py-2 small">Saved.</div>
+{% endif %}
 
 <div class="d-flex align-items-center gap-2 mb-3">
   <h4 class="mb-0">{{ q.exam_label }} — Question {{ q.item_number }}</h4>
@@ -26,6 +48,58 @@
     <span class="badge text-bg-warning">needs review</span>
   {% endif %}
 </div>
+
+{% if mode == 'practice' %}
+{# ----------------------------- PRACTICE MODE ----------------------------- #}
+{# No correctness anywhere in this branch's HTML: the answer key only arrives
+   via the /check response, so view-source can't spoil the self-test. #}
+
+<div class="card mb-3">
+  <div class="card-body">
+    <p style="white-space: pre-wrap;">{{ q.question_text }}</p>
+    {% if multi_select %}
+      <p class="text-muted small mb-2">Select all that apply.</p>
+    {% endif %}
+    {% for opt in q.options %}
+    <div class="form-check mb-2 rounded p-2 ps-5" id="opt-row-{{ opt.option_letter }}">
+      <input class="form-check-input practice-input"
+             type="{{ 'checkbox' if multi_select else 'radio' }}"
+             name="practice-answer" id="popt{{ opt.option_letter }}" value="{{ opt.option_letter }}">
+      <label class="form-check-label" for="popt{{ opt.option_letter }}">
+        <strong>{{ opt.option_letter }}.</strong> {{ opt.option_text }}
+      </label>
+    </div>
+    {% endfor %}
+
+    <div class="d-flex align-items-center gap-3 mt-3">
+      <button class="btn btn-primary" id="btn-check" onclick="checkAnswer()">Check answer</button>
+      <div id="check-result" class="alert py-2 mb-0 d-none"></div>
+    </div>
+  </div>
+</div>
+
+<details class="mb-3">
+  <summary class="text-muted" style="cursor:pointer">
+    Show source screenshot <span class="small">(spoiler: it displays the answer)</span>
+  </summary>
+  <div class="card mt-2">
+    <div class="card-body p-2">
+      <img src="/question/{{ q.id }}/image" class="img-fluid rounded border" loading="lazy">
+    </div>
+  </div>
+</details>
+
+{% if explanation_html %}
+<div class="card mt-3 d-none" id="practice-explanation">
+  <div class="card-header bg-white">Explanation</div>
+  <div class="card-body">{{ explanation_html | safe }}</div>
+</div>
+{% endif %}
+
+{% else %}
+{# ------------------------------- EDIT MODE ------------------------------- #}
+
+<div id="reanalyze-error" class="alert alert-danger py-2 small d-none"></div>
 
 <div class="row g-4">
   <div class="col-lg-6">
@@ -38,21 +112,31 @@
   </div>
 
   <div class="col-lg-6">
-    <form method="post" action="/question/{{ q.id }}/save">
+    <form method="post" action="/question/{{ q.id }}/save?filter={{ nav_filter }}">
       <div class="card">
         <div class="card-header bg-white">Question text</div>
         <div class="card-body">
+          <div class="row g-2 mb-3" style="max-width: 320px;">
+            <div class="col-4">
+              <label class="form-label small text-muted mb-0">Exam</label>
+              <input type="text" class="form-control form-control-sm" name="exam_label" value="{{ q.exam_label or '' }}" maxlength="3">
+            </div>
+            <div class="col-8">
+              <label class="form-label small text-muted mb-0">Item number</label>
+              <input type="number" class="form-control form-control-sm" name="item_number" value="{{ q.item_number or '' }}" min="1">
+            </div>
+          </div>
           <textarea name="question_text" class="form-control" rows="5">{{ q.question_text }}</textarea>
         </div>
       </div>
 
       <div class="card mt-3">
-        <div class="card-header bg-white">Options <span class="text-muted small">(select the correct one)</span></div>
+        <div class="card-header bg-white">Options <span class="text-muted small">(tick every correct answer -- questions can have more than one)</span></div>
         <div class="card-body">
           {% for opt in q.options %}
           <div class="option-row d-flex align-items-start gap-2 mb-2 {% if opt.is_correct %}is-correct{% endif %}">
             <div class="form-check mt-2">
-              <input class="form-check-input" type="radio" name="correct_letter" value="{{ opt.option_letter }}" {% if opt.is_correct %}checked{% endif %}>
+              <input class="form-check-input" type="checkbox" name="correct_letter" value="{{ opt.option_letter }}" {% if opt.is_correct %}checked{% endif %}>
             </div>
             <div class="flex-grow-1">
               <div class="d-flex align-items-center gap-2 mb-1">
@@ -106,16 +190,14 @@
   </div>
 </div>
 
+{% endif %}
+
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-let draftRaw = null;
-let draftProvider = null;
-let draftModel = null;
-
-const PREV_URL = {{ ('/question/' ~ prev_id) | tojson if prev_id else 'null' }};
-const NEXT_URL = {{ ('/question/' ~ next_id) | tojson if next_id else 'null' }};
+const PREV_URL = {{ ('/question/' ~ prev_id ~ '?filter=' ~ nav_filter ~ '&mode=' ~ mode) | tojson if prev_id else 'null' }};
+const NEXT_URL = {{ ('/question/' ~ next_id ~ '?filter=' ~ nav_filter ~ '&mode=' ~ mode) | tojson if next_id else 'null' }};
 
 document.addEventListener('keydown', (e) => {
   // Ignore arrow keys while typing in a text field/textarea.
@@ -124,6 +206,100 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft' && PREV_URL) window.location = PREV_URL;
   if (e.key === 'ArrowRight' && NEXT_URL) window.location = NEXT_URL;
 });
+
+function toggleRead() {
+  const btn = document.getElementById('btn-read');
+  const nowRead = btn.dataset.read !== '1';
+  btn.disabled = true;
+  fetch('/question/{{ q.id }}/read', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({read: nowRead}),
+  })
+    .then(r => r.json())
+    .then(() => {
+      btn.disabled = false;
+      btn.dataset.read = nowRead ? '1' : '0';
+      btn.textContent = nowRead ? 'Read ✓' : 'Mark as read';
+      btn.classList.toggle('btn-info', nowRead);
+      btn.classList.toggle('btn-outline-info', !nowRead);
+    })
+    .catch(() => { btn.disabled = false; });
+}
+
+{% if mode == 'practice' %}
+function checkAnswer() {
+  const selected = Array.from(document.querySelectorAll('.practice-input:checked')).map(el => el.value);
+  const result = document.getElementById('check-result');
+  if (!selected.length) {
+    result.className = 'alert alert-warning py-2 mb-0';
+    result.textContent = 'Pick an answer first.';
+    return;
+  }
+  fetch('/question/{{ q.id }}/check', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({letters: selected}),
+  })
+    .then(r => r.json().then(data => ({ok: r.ok, data})))
+    .then(({ok, data}) => {
+      if (!ok) {
+        result.className = 'alert alert-warning py-2 mb-0';
+        result.textContent = data.error || 'Check failed.';
+        return;
+      }
+      // Highlight: correct option(s) green; the user's wrong picks red.
+      document.querySelectorAll('[id^="opt-row-"]').forEach(row => {
+        row.classList.remove('bg-success-subtle', 'bg-danger-subtle');
+        const letter = row.id.replace('opt-row-', '');
+        if (data.correct_letters.includes(letter)) {
+          row.classList.add('bg-success-subtle');
+        } else if (selected.includes(letter)) {
+          row.classList.add('bg-danger-subtle');
+        }
+      });
+      result.className = 'alert py-2 mb-0 ' + (data.is_correct ? 'alert-success' : 'alert-danger');
+      result.innerHTML = (data.is_correct ? '<strong>Correct!</strong>' : '<strong>Wrong.</strong>')
+        + ' Answer: <strong>' + data.correct_letters.join(', ') + '</strong>';
+      const expl = document.getElementById('practice-explanation');
+      if (expl) expl.classList.remove('d-none');
+    });
+}
+{% endif %}
+
+{% if mode == 'edit' %}
+function runReanalyze() {
+  const btn = document.getElementById('btn-reanalyze');
+  btn.disabled = true;
+  document.getElementById('reanalyze-spinner').classList.remove('d-none');
+  document.getElementById('reanalyze-error').classList.add('d-none');
+
+  fetch('/question/{{ q.id }}/reanalyze', {method: 'POST'})
+    .then(r => r.json().then(data => ({ok: r.ok, data})))
+    .then(({ok, data}) => {
+      if (!ok) {
+        btn.disabled = false;
+        document.getElementById('reanalyze-spinner').classList.add('d-none');
+        const err = document.getElementById('reanalyze-error');
+        err.textContent = data.error || 'Re-analysis failed.';
+        err.classList.remove('d-none');
+        return;
+      }
+      // Reload to show the freshly extracted content.
+      window.location.reload();
+    })
+    .catch(e => {
+      btn.disabled = false;
+      document.getElementById('reanalyze-spinner').classList.add('d-none');
+      const err = document.getElementById('reanalyze-error');
+      err.textContent = 'Request failed: ' + e;
+      err.classList.remove('d-none');
+    });
+}
+
+let draftRaw = null;
+let draftProvider = null;
+let draftModel = null;
 
 function runExplain() {
   const btn = document.getElementById('btn-explain');
@@ -198,5 +374,6 @@ function saveExplain() {
       err.classList.remove('d-none');
     });
 }
+{% endif %}
 </script>
 {% endblock %}

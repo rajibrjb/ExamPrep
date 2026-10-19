@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}SpotoQ — Exam{% endblock %}
+{% block content %}
+
+<h4 class="mb-3">Exam practice</h4>
+
+{% if resumable %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center">
+  <span>
+    You have an unfinished {{ resumable.mode.replace('_', ' ') }} session from
+    {{ resumable.started_at.strftime('%d %b %H:%M') }} —
+    {{ resumable.answered }}/{{ resumable.question_count }} answered.
+  </span>
+  <a class="btn btn-sm btn-warning" href="/exam/{{ resumable.id }}/q/1">Resume</a>
+</div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header bg-white"><strong>Simulated exam</strong></div>
+      <div class="card-body">
+        <p class="text-muted small">Like the real thing: random questions, countdown timer,
+        no feedback until you submit. Pass mark 72%.</p>
+        <form method="post" action="/exam/start">
+          <input type="hidden" name="mode" value="exam">
+          <div class="mb-2">
+            <label class="form-label small">Questions (max {{ eligible }})</label>
+            <input type="number" class="form-control form-control-sm" name="question_count"
+                   value="{{ default_count }}" min="1" max="{{ eligible }}">
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="timed" id="timed" checked>
+            <label class="form-check-label small" for="timed">Timed</label>
+            <input type="number" class="form-control form-control-sm d-inline-block ms-2" style="width:90px"
+                   name="minutes" value="{{ default_minutes }}" min="1"> <span class="small">min</span>
+          </div>
+          <button class="btn btn-primary btn-sm" type="submit">Start exam</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header bg-white"><strong>Retry failed</strong></div>
+      <div class="card-body">
+        <p class="text-muted small">Drill only the questions whose most recent answer was wrong.
+        Answer one correctly and it leaves this pool.</p>
+        <p><span class="badge text-bg-{{ 'danger' if failed_count else 'success' }}">{{ failed_count }} failing</span></p>
+        <form method="post" action="/exam/start">
+          <input type="hidden" name="mode" value="retry_failed">
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="timed" id="timed2">
+            <label class="form-check-label small" for="timed2">Timed</label>
+            <input type="number" class="form-control form-control-sm d-inline-block ms-2" style="width:90px"
+                   name="minutes" value="{{ default_minutes }}" min="1"> <span class="small">min</span>
+          </div>
+          <button class="btn btn-danger btn-sm" type="submit" {% if not failed_count %}disabled{% endif %}>
+            Start retry drill ({{ failed_count }})
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header bg-white"><strong>Study quiz</strong></div>
+      <div class="card-body">
+        <p class="text-muted small">Untimed. See the correct answer and explanation
+        immediately after each question.</p>
+        <form method="post" action="/exam/start">
+          <input type="hidden" name="mode" value="quiz">
+          <div class="mb-2">
+            <label class="form-label small">Questions</label>
+            <input type="number" class="form-control form-control-sm" name="question_count" value="20" min="1" max="{{ eligible }}">
+          </div>
+          <button class="btn btn-success btn-sm" type="submit">Start quiz</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <strong>Recent sessions</strong>
+    <a class="btn btn-sm btn-outline-secondary" href="/exam/history">Full history &amp; weak questions</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>When</th><th>Mode</th><th>Score</th><th>Result</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for s in history %}
+        <tr>
+          <td>{{ s.started_at.strftime('%d %b %H:%M') }}</td>
+          <td>{{ s.mode.replace('_', ' ') }}</td>
+          <td>{% if s.score_total %}{{ s.score_correct }}/{{ s.score_total }}
+              ({{ (100 * s.score_correct / s.score_total) | round(1) }}%){% else %}—{% endif %}</td>
+          <td>
+            {% if s.finished_at is none %}<span class="badge text-bg-warning">in progress</span>
+            {% elif s.passed %}<span class="badge text-bg-success">PASS</span>
+            {% else %}<span class="badge text-bg-danger">FAIL</span>{% endif %}
+          </td>
+          <td>
+            {% if s.finished_at %}<a class="btn btn-sm btn-outline-primary" href="/exam/{{ s.id }}/results">Results</a>
+            {% else %}<a class="btn btn-sm btn-outline-warning" href="/exam/{{ s.id }}/q/1">Resume</a>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">No exams taken yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

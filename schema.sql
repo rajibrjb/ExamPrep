@@ -90,3 +90,38 @@ ALTER TABLE questions ADD COLUMN IF NOT EXISTS explanation TEXT;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS explanation_provider TEXT;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS explanation_model TEXT;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS explanation_generated_at TIMESTAMPTZ;
+-- Study-progress marker: NULL = unread; set when the user marks a question read.
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
+
+-- Exam practice module: a session is one sitting (simulated exam, retry-failed
+-- drill, or study quiz); its exam_answers rows are pre-created at session start
+-- (fixing the random question order) and filled in as the user answers.
+-- is_correct stays NULL until grading: at submit time for exam mode, or
+-- immediately per answer in quiz (study) mode.
+CREATE TABLE IF NOT EXISTS exam_sessions (
+    id                  SERIAL PRIMARY KEY,
+    mode                TEXT NOT NULL, -- exam | retry_failed | quiz
+    question_count      INTEGER NOT NULL,
+    time_limit_seconds  INTEGER, -- NULL = untimed
+    pass_threshold      REAL NOT NULL DEFAULT 0.72,
+    started_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at         TIMESTAMPTZ,
+    score_correct       INTEGER,
+    score_total         INTEGER,
+    passed              BOOLEAN
+);
+
+CREATE TABLE IF NOT EXISTS exam_answers (
+    id                SERIAL PRIMARY KEY,
+    session_id        INTEGER NOT NULL REFERENCES exam_sessions(id) ON DELETE CASCADE,
+    question_id       INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    seq               INTEGER NOT NULL,
+    selected_letters  TEXT[],
+    marked            BOOLEAN NOT NULL DEFAULT false,
+    is_correct        BOOLEAN,
+    answered_at       TIMESTAMPTZ,
+    UNIQUE (session_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exam_answers_session ON exam_answers(session_id);
+CREATE INDEX IF NOT EXISTS idx_exam_answers_question ON exam_answers(question_id);

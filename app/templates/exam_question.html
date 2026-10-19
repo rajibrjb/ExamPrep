@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Exam — {{ question.seq }}/{{ s.question_count }}{% endblock %}
+{% block extra_head %}
+<style>
+  .palette-btn { width: 2.6rem; }
+  .palette-btn.current { outline: 3px solid #0d6efd; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <strong>Question {{ question.seq }} of {{ s.question_count }}</strong>
+    <span class="text-muted small ms-2">{{ s.mode.replace('_',' ') }}</span>
+  </div>
+  <div class="d-flex align-items-center gap-3">
+    {% if s.remaining_seconds is not none %}
+      <span class="fs-5 font-monospace" id="timer" data-remaining="{{ s.remaining_seconds }}">--:--</span>
+    {% endif %}
+    <form method="post" action="/exam/{{ s.id }}/submit" id="submit-form"
+          onsubmit="return confirm('Submit the exam and see your score?');">
+      <button class="btn btn-sm btn-success" type="submit">Submit exam</button>
+    </form>
+  </div>
+</div>
+
+<div class="progress mb-3" style="height: 6px;">
+  <div class="progress-bar" style="width: {{ (100 * question.seq / s.question_count) | round(1) }}%"></div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <p style="white-space: pre-wrap;">{{ question.question_text }}</p>
+    {% if question.multi_select %}
+      <p class="text-muted small mb-2">Select all that apply.</p>
+    {% endif %}
+    {% set sel = question.selected_letters or [] %}
+    {% for opt in question.options %}
+    <div class="form-check mb-2">
+      <input class="form-check-input answer-input"
+             type="{{ 'checkbox' if question.multi_select else 'radio' }}"
+             name="answer" id="opt{{ opt.option_letter }}" value="{{ opt.option_letter }}"
+             {% if opt.option_letter in sel %}checked{% endif %}>
+      <label class="form-check-label" for="opt{{ opt.option_letter }}">
+        <strong>{{ opt.option_letter }}.</strong> {{ opt.option_text }}
+      </label>
+    </div>
+    {% endfor %}
+
+    <div id="quiz-feedback" class="d-none mt-3"></div>
+  </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    {% if question.seq > 1 %}
+      <a class="btn btn-outline-primary" href="/exam/{{ s.id }}/q/{{ question.seq - 1 }}">&larr; Previous</a>
+    {% endif %}
+  </div>
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" id="mark" {% if question.marked %}checked{% endif %}>
+    <label class="form-check-label small" for="mark">Mark for review</label>
+  </div>
+  <div>
+    {% if question.seq < s.question_count %}
+      <a class="btn btn-primary" href="/exam/{{ s.id }}/q/{{ question.seq + 1 }}">Next &rarr;</a>
+    {% else %}
+      <button class="btn btn-success" onclick="document.getElementById('submit-form').requestSubmit()">Finish &amp; submit</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body d-flex flex-wrap gap-1">
+    {% for p in palette %}
+      <a href="/exam/{{ s.id }}/q/{{ p.seq }}"
+         class="btn btn-sm palette-btn {{ 'current' if p.seq == question.seq }}
+                {{ 'btn-warning' if p.marked else ('btn-primary' if p.answered else 'btn-outline-secondary') }}">
+        {{ p.seq }}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const SESSION_ID = {{ s.id }};
+const SEQ = {{ question.seq }};
+const IS_QUIZ = {{ 'true' if s.mode == 'quiz' else 'false' }};
+const MULTI = {{ 'true' if question.multi_select else 'false' }};
+
+function selectedLetters() {
+  return Array.from(document.querySelectorAll('.answer-input:checked')).map(el => el.value);
+}
+
+function save(extra = {}) {
+  return fetch(`/exam/${SESSION_ID}/q/${SEQ}/answer`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(Object.assign({letters: selectedLetters(),
+                                        marked: document.getElementById('mark').checked}, extra)),
+  }).then(r => r.json());
+}
+
+document.querySelectorAll('.answer-input').forEach(el => {
+  el.addEventListener('change', () => {
+    save().then(data => {
+      if (IS_QUIZ && data && 'is_correct' in data) {
+        const fb = document.getElementById('quiz-feedback');
+        fb.classList.remove('d-none', 'alert-success', 'alert-danger');
+        fb.classList.add('alert', data.is_correct ? 'alert-success' : 'alert-danger');
+        fb.innerHTML = (data.is_correct ? '<strong>Correct!</strong>' : '<strong>Wrong.</strong>')
+          + ' Answer: <strong>' + data.correct_letters.join(', ') + '</strong>';
+      }
+    });
+  });
+});
+
+document.getElementById('mark').addEventListener('change', () => save());
+
+{% if s.remaining_seconds is not none %}
+let remaining = parseInt(document.getElementById('timer').dataset.remaining, 10);
+function tick() {
+  const m = Math.floor(remaining / 60), sec = remaining % 60;
+  const el = document.getElementById('timer');
+  el.textContent = `${m}:${String(sec).padStart(2, '0')}`;
+  el.classList.toggle('text-danger', remaining < 300);
+  if (remaining <= 0) {
+    document.getElementById('submit-form').onsubmit = null;  // skip confirm
+    document.getElementById('submit-form').submit();
+    return;
+  }
+  remaining -= 1;
+  setTimeout(tick, 1000);
+}
+tick();
+{% endif %}
+</script>
+{% endblock %}

@@ -146,13 +146,53 @@ def get_conflict(conn, conflict_id):
 
 
 def resolve_conflict(conn, conflict_id, resolution):
-    """resolution: 'kept_existing' (discard the new extraction) or 'adopted_new'
-    (overwrite the stored question with the conflicting extraction)."""
+    """resolution:
+      'kept_existing' -- discard the new extraction
+      'adopted_new'   -- overwrite the stored question with the new extraction
+      'kept_both'     -- they're genuinely different questions: keep the existing
+                         one untouched AND insert the new extraction as its own
+                         question. The collision means one of their item numbers
+                         was misread, so the new row gets item_number NULL and a
+                         review flag telling the user to set the right number
+                         from its screenshot."""
     conflict = get_conflict(conn, conflict_id)
     if not conflict:
         return
     with conn.cursor() as cur:
-        if resolution == "adopted_new":
+        if resolution == "kept_both":
+            cur.execute(
+                """
+                INSERT INTO questions
+                    (source_image_id, exam_label, item_number, question_text,
+                     confidence, needs_review, updated_at)
+                VALUES (%s, NULL, NULL, %s, 'low', true, now())
+                RETURNING id
+                """,
+                (conflict["source_image_id"], conflict["question_text"]),
+            )
+            new_id = cur.fetchone()[0]
+            for opt in conflict["options_json"]:
+                cur.execute(
+                    """
+                    INSERT INTO options
+                        (question_id, option_letter, option_text, is_correct, color_detected, source_signal)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (new_id, opt["option_letter"], opt["option_text"],
+                     opt["is_correct"], opt.get("color_detected"), "manual"),
+                )
+            cur.execute(
+                "INSERT INTO review_queue (question_id, reason) VALUES (%s, %s)",
+                (new_id,
+                 "saved from a conflict as a separate question -- its item number "
+                 "collided with another question's, so set the correct exam/item "
+                 "number from the screenshot"),
+            )
+            cur.execute(
+                "UPDATE questions SET needs_review = false WHERE id = %s",
+                (conflict["question_id"],),
+            )
+        elif resolution == "adopted_new":
             cur.execute(
                 """
                 UPDATE questions
@@ -210,17 +250,60 @@ def add_review_reason(conn, question_id, reason):
         )
 
 
-def list_questions(conn, needs_review=None, limit=200, offset=0):
-    query = "SELECT * FROM questions"
-    params = []
-    if needs_review is not None:
-        query += " WHERE needs_review = %s"
-        params.append(needs_review)
-    query += " ORDER BY exam_label, item_number LIMIT %s OFFSET %s"
-    params += [limit, offset]
+# List filters shared by the question list, its pagination counts, and the
+# detail page's prev/next navigation, so "Next" always walks the same set the
+# user is looking at.
+QUESTION_FILTERS = {
+    "all": "",
+    "needs_review": "needs_review = true",
+    "read": "read_at IS NOT NULL",
+    "unread": "read_at IS NULL",
+}
+
+
+def _filter_clause(question_filter, prefix="WHERE"):
+    clause = QUESTION_FILTERS.get(question_filter or "all", "")
+    return f" {prefix} {clause}" if clause else ""
+
+
+def list_questions(conn, question_filter="all", limit=200, offset=0):
+    query = (
+        "SELECT * FROM questions"
+        + _filter_clause(question_filter)
+        + " ORDER BY exam_label, item_number LIMIT %s OFFSET %s"
+    )
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(query, params)
+        cur.execute(query, (limit, offset))
         return cur.fetchall()
+
+
+def set_question_read(conn, question_id, read):
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE questions SET read_at = CASE WHEN %s THEN now() ELSE NULL END WHERE id = %s",
+            (read, question_id),
+        )
+
+
+def list_question_ids_needing_explanation(conn, confidence="high"):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id FROM questions
+            WHERE confidence = %s AND explanation IS NULL
+            ORDER BY exam_label, item_number
+            """,
+            (confidence,),
+        )
+        return [row[0] for row in cur.fetchall()]
+
+
+def count_questions(conn, question_filter="all"):
+    query = "SELECT count(*) FROM questions" + _filter_clause(question_filter)
+    with conn.cursor() as cur:
+        cur.execute(query)
+        (total,) = cur.fetchone()
+        return total
 
 
 def get_question(conn, question_id):
@@ -243,14 +326,17 @@ def get_question(conn, question_id):
         return question
 
 
-def get_adjacent_question_ids(conn, exam_label, item_number):
+def get_adjacent_question_ids(conn, exam_label, item_number, question_filter="all"):
     """Previous/next question id in the same ordering used by the question list
-    (exam_label, item_number), for the detail page's prev/next navigation."""
+    (exam_label, item_number), for the detail page's prev/next navigation.
+    Navigation stays within the given list filter (needs_review/read/unread),
+    so paging from a filtered list walks only that set."""
+    review_clause = _filter_clause(question_filter, prefix="AND")
     with conn.cursor() as cur:
         cur.execute(
-            """
+            f"""
             SELECT id FROM questions
-            WHERE (exam_label, item_number) < (%s, %s)
+            WHERE (exam_label, item_number) < (%s, %s){review_clause}
             ORDER BY exam_label DESC, item_number DESC
             LIMIT 1
             """,
@@ -258,9 +344,9 @@ def get_adjacent_question_ids(conn, exam_label, item_number):
         )
         prev_row = cur.fetchone()
         cur.execute(
-            """
+            f"""
             SELECT id FROM questions
-            WHERE (exam_label, item_number) > (%s, %s)
+            WHERE (exam_label, item_number) > (%s, %s){review_clause}
             ORDER BY exam_label ASC, item_number ASC
             LIMIT 1
             """,
@@ -270,9 +356,28 @@ def get_adjacent_question_ids(conn, exam_label, item_number):
     return (prev_row[0] if prev_row else None), (next_row[0] if next_row else None)
 
 
-def update_question_manual(conn, question_id, question_text, options):
-    """options: list of {option_letter, option_text, is_correct}"""
+def update_question_manual(conn, question_id, question_text, options,
+                            exam_label=None, item_number=None):
+    """options: list of {option_letter, option_text, is_correct}.
+    exam_label/item_number, when provided, also update the question's identity
+    (used to fix misread item numbers, e.g. rows saved from a 'keep both'
+    conflict resolution). Raises ValueError if that identity is already taken
+    by a different question."""
     with conn.cursor() as cur:
+        if exam_label is not None and item_number is not None:
+            cur.execute(
+                "SELECT id FROM questions WHERE exam_label = %s AND item_number = %s AND id != %s",
+                (exam_label, item_number, question_id),
+            )
+            taken = cur.fetchone()
+            if taken:
+                raise ValueError(
+                    f"{exam_label} item {item_number} is already used by question #{taken[0]}"
+                )
+            cur.execute(
+                "UPDATE questions SET exam_label = %s, item_number = %s WHERE id = %s",
+                (exam_label, item_number, question_id),
+            )
         cur.execute(
             """
             UPDATE questions
@@ -295,6 +400,31 @@ def update_question_manual(conn, question_id, question_text, options):
             "UPDATE review_queue SET resolved_at = now() WHERE question_id = %s AND resolved_at IS NULL",
             (question_id,),
         )
+
+
+def update_question_reanalysis(conn, question_id, result):
+    """Overwrite a question's extracted content with a fresh re-analysis of its
+    source image (the 'Re-analyze' button). Identity (exam/item) is left
+    untouched; old unresolved review flags are superseded by the new ones."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE questions
+            SET question_text = %s, raw_ocr_text = %s, confidence = %s,
+                needs_review = %s, updated_at = now()
+            WHERE id = %s
+            """,
+            (result["question_text"], result["raw_ocr_text"], result["confidence"],
+             result["needs_review"], question_id),
+        )
+        cur.execute(
+            "UPDATE review_queue SET resolved_at = now() WHERE question_id = %s AND resolved_at IS NULL",
+            (question_id,),
+        )
+    replace_options(conn, question_id, result["options"])
+    if result["needs_review"]:
+        for reason in result["review_reasons"]:
+            add_review_reason(conn, question_id, reason)
 
 
 def save_explanation(conn, question_id, explanation, provider, model):

@@ -50,6 +50,13 @@
       <input type="hidden" name="resolution" value="adopted_new">
       <button class="btn btn-outline-warning btn-sm" type="submit">Replace with new extraction</button>
     </form>
+    <form method="post" action="/conflicts/{{ c.id }}/resolve" class="d-inline">
+      <input type="hidden" name="resolution" value="kept_both">
+      <button class="btn btn-outline-success btn-sm" type="submit"
+              title="They're genuinely different questions: keep the existing one AND save the new extraction as its own question (you'll set its correct item number afterwards -- it lands in Needs Review)">
+        Keep both (save new separately)
+      </button>
+    </form>
     <a class="btn btn-outline-primary btn-sm" href="/question/{{ c.question_id }}">Open stored question</a>
   </div>
 </div>

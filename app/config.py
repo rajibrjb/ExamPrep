@@ -30,6 +30,12 @@ class Config:
     color_thresholds = _raw["color_thresholds"]
     dedupe_similarity_threshold = float(_raw["dedupe"]["similarity_threshold"])
 
+    # When true, skip the per-image Ollama advisory cross-check during ingestion.
+    # That call is never used to decide correctness (see structure_builder.py) --
+    # only to surface an optional "local vision model disagrees" review note --
+    # so it's safe to disable for large bulk backfills where its latency dominates.
+    skip_llm_advisory = os.environ.get("SKIP_LLM_ADVISORY", "false").lower() == "true"
+
     @classmethod
     def db_dsn(cls):
         return (

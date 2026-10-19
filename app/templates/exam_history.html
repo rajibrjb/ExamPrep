@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Exam history{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">History &amp; weak questions</h4>
+  <a class="btn btn-sm btn-outline-secondary" href="/exam">&larr; Exam home</a>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header bg-white"><strong>All sessions</strong></div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>When</th><th>Mode</th><th>Questions</th><th>Score</th><th>Duration</th><th>Result</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for s in history %}
+        <tr>
+          <td>{{ s.started_at.strftime('%d %b %Y %H:%M') }}</td>
+          <td>{{ s.mode.replace('_',' ') }}</td>
+          <td>{{ s.question_count }}</td>
+          <td>{% if s.score_total %}{{ s.score_correct }}/{{ s.score_total }}
+              ({{ (100 * s.score_correct / s.score_total) | round(1) }}%){% else %}—{% endif %}</td>
+          <td>{% if s.duration_seconds %}{{ (s.duration_seconds / 60) | round(1) }} min{% else %}—{% endif %}</td>
+          <td>
+            {% if s.finished_at is none %}<span class="badge text-bg-warning">in progress</span>
+            {% elif s.passed %}<span class="badge text-bg-success">PASS</span>
+            {% else %}<span class="badge text-bg-danger">FAIL</span>{% endif %}
+          </td>
+          <td>
+            {% if s.finished_at %}<a class="btn btn-sm btn-outline-primary" href="/exam/{{ s.id }}/results">Results</a>
+            {% else %}<a class="btn btn-sm btn-outline-warning" href="/exam/{{ s.id }}/q/1">Resume</a>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">No exams taken yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <strong>Weak questions</strong>
+    <form method="post" action="/exam/start" class="d-inline">
+      <input type="hidden" name="mode" value="retry_failed">
+      <button class="btn btn-sm btn-danger" type="submit" {% if not failed_count %}disabled{% endif %}>
+        Drill the {{ failed_count }} currently failing
+      </button>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Exam</th><th>Q#</th><th>Question</th><th>Wrong / asked</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for w in weak %}
+        <tr>
+          <td>{{ w.exam_label }}</td>
+          <td>{{ w.item_number }}</td>
+          <td class="question-text-cell">{{ w.question_text }}</td>
+          <td>{{ w.times_wrong }} / {{ w.times_asked }}</td>
+          <td>
+            {% if w.currently_failing %}<span class="badge text-bg-danger">failing</span>
+            {% else %}<span class="badge text-bg-success">recovered</span>{% endif %}
+          </td>
+          <td><a class="btn btn-sm btn-outline-primary" href="/question/{{ w.id }}">Open</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No wrong answers recorded yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

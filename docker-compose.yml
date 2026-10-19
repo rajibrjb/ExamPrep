@@ -14,10 +14,13 @@ services:
       # host.docker.internal resolves to the host from inside the container.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-minicpm-v}
+      SKIP_LLM_ADVISORY: ${SKIP_LLM_ADVISORY:-false}
     volumes:
       - ./incoming:/data/incoming
       - ./data/cleaned:/data/cleaned
       - ./data/debug:/data/debug
+      - ./data/explanations:/data/explanations
+      - ./scripts:/app/scripts
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

@@ -2,7 +2,7 @@ import requests
 
 from app.config import config
 
-TIMEOUT_SECONDS = 180
+TIMEOUT_SECONDS = 600
 
 
 class LLMError(RuntimeError):
