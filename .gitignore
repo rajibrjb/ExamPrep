@@ -1,6 +1,13 @@
 # Exam screenshots and generated intermediate images -- personal content, not code
-incoming/
-data/
+incoming/*
+data/*
+data/*/*
+# ...keep the folder structure: descend into subdirs, keep only the placeholders
+!data/*/
+!**/.gitkeep
+# ...and keep the SQL exports fully tracked
+!data/sql/
+!data/sql/*
 
 # Secrets / local env
 .env
